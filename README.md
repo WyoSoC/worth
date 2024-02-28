@@ -1,5 +1,5 @@
-# worth
-Wyoming Outdoor Recreation, Tourism and Hospitality (Initiative) - SoC code repository
+# WORTH Project
+Wyoming Outdoor Recreation, Tourism and Hospitality (Initiative) - UWyo SoC code repository
 
 ### Setup Python
 

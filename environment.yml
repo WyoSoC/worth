@@ -1,0 +1,15 @@
+name: worth
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - pandas
+  - jupyterlab
+  - humanize
+  - geopandas
+  - plotly
+  - tqdm
+  - gzip
+  - streamlit
+  - py3nvml
+prefix: /home/gojian/Programs/Mamba/envs/eco

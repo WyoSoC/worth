@@ -12,4 +12,4 @@ dependencies:
   - gzip
   - streamlit
   - py3nvml
-prefix: /home/gojian/Programs/Mamba/envs/eco
+

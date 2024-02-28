@@ -8,7 +8,7 @@ def main():
     st.title("SafeGraph POI Visualization")
 
     # Load regional POI from saved CSV file
-    df_safegraph_poi = pd.read_csv('DeweyData_Filtered/SafeGraph_POI_Wyoming.csv')
+    df_safegraph_poi = pd.read_csv('dewey_data_filtered/SafeGraph_POI_Yellowstone_200miRadius.csv.gz')
 
     # Convert the DataFrame to a GeoDataFrame
     gdf_safegraph_poi = gpd.GeoDataFrame(

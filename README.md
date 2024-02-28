@@ -29,6 +29,15 @@ conda env create -f environment.yml
 conda activate worth
 ```
 
+### Install deweydatapy library
+
+#### https://github.com/Dewey-Data/deweydatapy
+#### - Run command in conda environment: 
+
+```
+pip install deweydatapy@git+https://github.com/Dewey-Data/deweydatapy
+```
+
 ### Streamlit Web-App
 
 Command to activate a local server using Streamlit:

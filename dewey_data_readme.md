@@ -1,4 +1,4 @@
-## Here is a description of Dewey raw data size (data available on deweydata.io through a pay wall).
+## Here is a description of Dewey raw data and size (data available on deweydata.io through a pay wall).
 
 ## Tutorials:
 # https://github.com/Dewey-Data/deweydatapy

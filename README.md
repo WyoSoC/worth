@@ -25,11 +25,12 @@ Throughout the development, remember to run `git pull` frequently to keep your l
 conda env create -f environment.yml
 ```
 
-The above command can be slow (found in Windows OS). If this is the case, run the alternative command:
+Note: An essential package "gzip" is missing in Windows OS and causing the command to file. If this is the case, run the alternative command below:
 
 ```
 conda create -n worth python
-conda install pandas jupyterlab humanize geopandas plotly tqdm gzip streamlit py3nvml
+conda install m2-gzip
+conda install pandas jupyterlab humanize geopandas plotly tqdm streamlit py3nvml
 ```
 
 ```

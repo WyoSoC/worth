@@ -30,6 +30,9 @@ def main():
     # Add density map overlay
     # fig.add_trace(px.density_mapbox(gdf_safegraph_poi, lat='LATITUDE', lon='LONGITUDE', radius=5, opacity=0.5,).data[0])
 
+
+
+
     fig.update_layout(
         title="SafeGraph POI in Wyoming",
         height=800,

@@ -1,5 +1,6 @@
 import os
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import pandas as pd
 import geopandas as gpd
 import plotly.express as px
@@ -130,26 +131,36 @@ def time_filt(df, start, end):
 
 def percent_instate(df):
     home_city = df['CUSTOMER_HOME_CITY']
-    in_state = 0
-    out_state = 0
+    state_info = [['WY', 0]]
+    state_info_filtered = []
 
     for val in home_city:
         cities = val.split(",")
         cities = cities[1::2]
         for i in cities:
+            found = False
             state = i.split(':')
-            if(state[0].find("WY") != 1):
+            state[0] = state[0].strip().strip("\"")
+            j = 0
+            while j < len(state_info):
+                if state[0] == state_info[j][0]:
+                    count = state[1].strip("{}")
+                    state_info[j][1] = state_info[j][1] + int(count)
+                    found = True
+                j += 1
+            if found == False:
                 count = state[1].strip("{}")
-                out_state += int(count)
-            else:
-                count = state[1].strip("{}")
-                in_state += int(count)
+                state_info.append([state[0], int(count)])
     
-    #print('Out of state: ', out_state)
-    #print('In state: ', in_state)
-    #print('Percentage out of state:', (out_state)/(in_state+out_state)*100, '%')
+    dump = ['Other', 0]
+    for i in state_info:
+        if (i[0] == 'WY' or i[0] == 'CO' or i[0] == 'MT' or i[0] == 'ID' or i[0] == 'SD'):
+            state_info_filtered.append(i)
+        else:
+            dump[1] += i[1]
+    state_info_filtered.append(dump)
     
-    return [in_state, out_state]
+    return [state_info, state_info_filtered]
 
 
 
@@ -197,13 +208,11 @@ def spend_by_day(df):
 
     df_grouped = df_spend_by_day.groupby('DATE')['SPEND_BY_DAY'].sum()
 
-    print('\n')
-
     return df_grouped
 
 
 
-def type_pie_town(df_safegraph_poi, df_safegraph_spend, place):
+def type_pie_town(df_safegraph_poi, df_safegraph_spend, place, months):
     ## Make DataFrame for POIs in slected town/towns
     combined_mask = np.zeros(len(df_safegraph_poi), dtype = bool)
     if type(place) == list:
@@ -217,27 +226,26 @@ def type_pie_town(df_safegraph_poi, df_safegraph_spend, place):
 
     ## NAICS code groupings for pie chart
     groups = {
-            'Agriculture' : ['11'],
-            'Construction' : ['23'],
-            'Manufacturing' : ['31', '32', '33'],
-            'Retail' : ['44', '45'],
-            'Transportation' : ['48', '49'],
-            'Real Estate' : ['53'],
-            'Technical Services' : ['54'],
-            'Administrative Services' : ['56'],
-            'Health Care' : ['62'],
-            'Arts' : ['71'],
-            'Accomodations and Food' : ['72'],
-            'Other' : ['81', '55', '21', '52', '61', '51', '42', '22'],
-            'Public Administration' : ['91']
+            'Construction' : [['23'], 'Orange', []],
+            'Manufacturing' : [['31', '32', '33'], 'Yellow', []],
+            'Retail' : [['44', '45'], 'Lightcoral', []],
+            'Transportation' : [['48', '49'], 'Royalblue', []],
+            'Real Estate' : [['53'], 'Purple', []],
+            'Technical Services' : [['54'], 'Red', []],
+            'Administrative Services' : [['56'], 'Peru', []],
+            'Health Care' : [['62'], 'Hotpink', []],
+            'Arts' : [['71'], 'Aqua', []],
+            'Accomodations and Food' : [['72'], 'Springgreen', []],
+            'Other' : [['81', '55', '21', '52', '61', '51', '42', '22', '11'], 'Gold', []],
+            'Public Administration' : [['92'], 'Indigo', []]
         }
 
-    #print("Here is unfiltered number of POIs", len(df_place))
+    print("Here is unfiltered number of POIs", len(df_place))
 
     ## Make a DataFrame for our 2 character codes
     naics_to_group = {}
     for group_name, code_list in groups.items():
-        for code in code_list:
+        for code in code_list[0]:
             naics_to_group[code] = group_name
 
     ## Getting data and putting it in readable form for the pie chart
@@ -245,18 +253,19 @@ def type_pie_town(df_safegraph_poi, df_safegraph_spend, place):
     naics_codes = df_place['NAICS_CODE_FINAL'].value_counts()
 
     ## Making the pie chart
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 12), sharey=True)
-    ax1.pie(naics_codes, labels = naics_codes.index)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    ax1.pie(naics_codes, colors = [groups[label][1] for label in naics_codes.index])
+    fig.legend()
     if type(place) == list:
-            title = ''
-            for i in place:
-                title += i + ', '
-            ax1.set_title('POIs with spending in ' + title)
+            #title = ''
+            #for i in place:
+            #    title += i + ', '
+            ax1.set_title('Total POIs')
     else:
-        ax1.set_title('POIs with spending in ' + place)
+        ax1.set_title('POIs in ' + place)
+    #fig.legend(naics_codes.index, fontsize = 'small')
 
-
-    ## Repeat process for specific POIs that had credit card spending at them  (Check with team about specifics)
+    ## Repeat process for specific POIs that had credit card spending at them
     if 'PLACEKEY' in df_safegraph_spend.columns and 'PLACEKEY' in df_place.columns:
         df_pie = df_place[df_place['PLACEKEY'].isin(df_safegraph_spend['PLACEKEY'])]
 
@@ -264,21 +273,52 @@ def type_pie_town(df_safegraph_poi, df_safegraph_spend, place):
 
         naics_to_group = {}
         for group_name, code_list in groups.items():
-            for code in code_list:
+            for code in code_list[0]:
                 naics_to_group[code] = group_name
 
         df_pie['NAICS_CODE_FINAL'] = df_pie['NAICS_CODE'].astype(str).str[:2].map(lambda x: naics_to_group.get(x, 'Other'))
         naics_codes_filtered = df_pie['NAICS_CODE_FINAL'].value_counts()
         
-        ax2.pie(naics_codes_filtered, labels=naics_codes_filtered.index)
+        ax2.pie(naics_codes_filtered, colors = [groups[label][1] for label in naics_codes_filtered.index])
         if type(place) == list:
             title = ''
             for i in place:
                 title += i + ', '
-            ax2.set_title('POIs with spending in ' + title)
+            ax2.set_title('POIs with spending')
         else:
             ax2.set_title('POIs with spending in ' + place)
-    fig.suptitle("POIs")
+
+    ## Merging DataFrames so we know which spending belongs to which NAICS category
+    fig2, ax3 = plt.subplots(figsize = (15, 8))
+    df_total = df_safegraph_spend.merge(df_pie[['PLACEKEY', 'NAICS_CODE_FINAL']], on='PLACEKEY', how='inner')
+
+    ## Setting up Stacked Bar chart things
+    for i in range(len(months) - 1):
+        df_total_filtered = time_filt(df_total, months[i], months[i+1])
+
+        ## Getting total money value for each NAICS code over each month
+        spend_total = df_total_filtered.groupby('NAICS_CODE_FINAL')['RAW_TOTAL_SPEND'].sum().astype(int)
+        for group_name, group_data in groups.items():
+            money = spend_total.get(group_name, 0)
+            group_data[2].append(money)
+
+    ## Making final graph
+    bottom = np.zeros(len(months)-1)
+    for naics, data in groups.items():
+        values = np.array(data[2])
+        ax3.bar(months[:-1], values, bottom = bottom, color = data[1], label = naics)
+        bottom += values
+    ax3.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, _: f'{x/1000:.0f}K'))
+    ax3.set_ylabel('Dollars Spent in Thousands')
+
+    if type(place) == list:
+        title = ''
+        for i in place:
+            title += i + ', '
+        #fig2.suptitle('Spending at POIs in ' + title[:-2], fontsize = '24')
+    else:
+        #fig2.suptitle('Spending at POIs in ' + place, fontsize = '24')
+        x=1
 
     return
 
@@ -288,8 +328,13 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
                         during_flood_start, during_flood_end, after_flood_start, after_flood_end, month):
     
     ## Setting up DataFrame for specific place and time
-    mask = df_safegraph_poi['CITY'] == place                    
-    df_place_poi = df_safegraph_poi[mask]
+    if type(place) == list:
+        df_place_poi = df_safegraph_poi[df_safegraph_poi['CITY'].isin(place)]
+        place_title = ', '.join(place)
+    else:
+        mask = df_safegraph_poi['CITY'] == place                    
+        df_place_poi = df_safegraph_poi[mask]
+        place_title = place
     if 'PLACEKEY' in df_safegraph_spend.columns:
         df_place = df_safegraph_spend[df_safegraph_spend['PLACEKEY'].isin(df_place_poi['PLACEKEY'])]
     df_place_flood = time_filt(df_place, '2022-05-01', '2022-08-01')
@@ -298,72 +343,63 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
     during_flood = df_flood_spending[40:47]
     after_flood = df_flood_spending[47:54]
 
-    ## Making graph for Daily Spending during our timeframe
-    fig, ax = plt.subplots()
-    ax.plot(before_flood)
-    ax.plot(during_flood)
-    ax.plot(after_flood)
-    ax.legend(['Week Before Flood', 'Week During Flood', 'Week After Flood'])
-    fig.suptitle('Daily Spending: ' + place, fontsize='24');
-
+    ## Making graphs for Daily Spending during our timeframe. First graph is week before-week after. Second graph is month before-month after
+    fig1, ax1 = plt.subplots(figsize = (15, 4))
+    ax1.plot(before_flood)
+    ax1.plot(during_flood)
+    ax1.plot(after_flood)
+    ax1.legend(['Week Before Flood', 'Week of Flood', 'Week After Flood'])
+    fig1.suptitle('Daily Spending: ' + place_title, fontsize='24');
 
     df_place_before = time_filt(df_place, before_flood_start, before_flood_end)
     df_place_during = time_filt(df_place, during_flood_start, during_flood_end)
     df_place_after = time_filt(df_place, after_flood_start, after_flood_end)
-
     df_spend_before = spend_by_day(df_place_before)
     df_spend_during = spend_by_day(df_place_during)
     df_spend_after = spend_by_day(df_place_after)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 12), sharey=True);
-    ax1.plot(df_spend_before)
-    ax1.set_title('Before flood (May)');
+    fig2, ax2 = plt.subplots(figsize=(15, 4));
+    ax2.plot(df_spend_before)
     ax2.plot(df_spend_during)
-    ax2.set_title('During flood (June)');
-    ax3.plot(df_spend_after)
-    ax3.set_title('After flood (July)');
-    fig.suptitle('Daily Spending, All Transactions', fontsize='24');
+    ax2.plot(df_spend_after)
+    ax2.legend(['Month Before (May)', 'Month Of (June)', 'Month After (July)'])
+    fig2.suptitle('Daily Spending: ' + place_title, fontsize='24');
 
-    #print('Percent Change April to May: ')
-    #print(percent_change_month(df_place_before), '%\n')
-
-    #print('Percent Change May to Jume: ')
-    #print(percent_change_month(df_place_during), '%\n')
-
-    #print('Percent Change June to July: ')
-    #print(percent_change_month(df_place_after), '%\n')
-
-    #print('Percent Change May 2021 to May 2022: ')
-    #print(percent_change_year(df_place_before), '%\n')
-
-    #print('Percent Change June 2021 to Jume 2022: ')
-    #print(percent_change_year(df_place_during), '%\n')
-
-    #print('Percent Change July 2021 to July 2022: ')
-    #print(percent_change_year(df_place_after), '%\n')
-
-    #print('Before Flooding: ')
+    ## Pie Charts for what transactions were instate vs out of state
     before = percent_instate(df_place_before)
-    #print('\n')
-
-    #print('During Flooding: ')
     during = percent_instate(df_place_during)
-    #print('\n')
-
-    #print('After Flooding: ')
     after = percent_instate(df_place_after)
-    #print('\n')
 
-    labels = 'In State','Out-of-State'
+    ## Pie Chart Color mapping
+    color_map = {
+        'WY' : 'Gold',
+        'CO' : 'Springgreen',
+        'MT' : 'Lightcoral',
+        'ID' : 'Purple',
+        'SD' : 'Aqua',
+        'Other' : 'RoyalBlue'
+    }
+
+    before_total = 0
+    during_total = 0
+    after_total = 0
+    for i in before[1]:
+        before_total += i[1]
+    for j in during[1]:
+        during_total += j[1]
+    for k in after[1]:
+        after_total += k[1]
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 6));
-    ax1.pie(before, labels=labels, autopct='%1.1f%%');
-    ax1.set_title('Before flood (May)');
-    ax2.pie(during, labels=labels, autopct='%1.1f%%');
-    ax2.set_title('During flood (June)');
-    ax3.pie(after, labels=labels, autopct='%1.1f%%');
-    ax3.set_title('After flood (July)');
-    fig.suptitle('State of Origin, All Transactions', fontsize='24');
+    ax1.pie([data[1] for data in before[1]], labels=[label[0] for label in before[1]], colors=[color_map[label[0]] for label in before[1]], autopct='%1.1f%%');
+    ax1.set_title('Before flood (May), Total Sales: ' + str(before_total));
+    ax2.pie([data[1] for data in during[1]], labels=[label[0] for label in during[1]], colors=[color_map[label[0]] for label in during[1]], autopct='%1.1f%%');
+    ax2.set_title('During flood (June), Total Sales: ' + str(during_total));
+    ax3.pie([data[1] for data in after[1]], labels=[label[0] for label in after[1]], colors=[color_map[label[0]] for label in after[1]], autopct='%1.1f%%');
+    ax3.set_title('After flood (July), Total Sales: ' + str(after_total));
+    fig.suptitle('State of Origin: All Transactions' , fontsize='24');
 
+    ## Making map for monthly spending at place
     df_place_jan = time_filt(df_place, month[0], month[1])
     df_place_feb = time_filt(df_place, month[1], month[2])
     df_place_mar = time_filt(df_place, month[2], month[3])
@@ -376,27 +412,24 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
     df_place_oct = time_filt(df_place, month[9], month[10])
     df_place_nov = time_filt(df_place, month[10], month[11])
     df_place_dec = time_filt(df_place, month[11], month[12])
-
     month_dfs = [df_place_jan, df_place_feb, df_place_mar, df_place_apr, df_place_may, df_place_jun, 
              df_place_jul, df_place_aug, df_place_sep, df_place_oct, df_place_nov, df_place_dec]
-    
-    prev_year_pct=[]
 
+    ## Graph for percent change of spending compared to year prior
+    prev_year_pct=[]
     for i in range(0, len(month_dfs)):
         prev_year_pct.append(percent_change_year(month_dfs[i]))
-
-    fig, ax = plt.subplots(figsize=(16, 5))
+    fig, ax = plt.subplots(figsize=(15, 4))
     ax.plot(month[0:12], prev_year_pct);
     ax.set_title('Percent Change compared to 2021');
     ax.set_xlabel('Date');
     ax.set_ylabel('Percent Change');
 
+    ## Graph for percent change of spending compared to month prior
     prev_month_pct=[]
-
     for i in range(0, len(month_dfs)):
         prev_month_pct.append(percent_change_month(month_dfs[i]))
-
-    fig, ax = plt.subplots(figsize=(16, 5))
+    fig, ax = plt.subplots(figsize=(15, 4))
     ax.plot(month[0:12], prev_month_pct);
     ax.set_title('Percent Change compared to prior month');
     ax.set_xlabel('Date');
@@ -409,12 +442,10 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
 def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, before_flood_start, before_flood_end, 
                 during_flood_start, during_flood_end, after_flood_start, after_flood_end, month, 
                 naics, TOS):
-    ## make mask for POI
+    ## Setting up dataframe for our graphs
     mask = df_safegraph_poi['CITY'] == place
     df_place_TOS = df_safegraph_poi[mask]
     combined_mask = np.zeros(len(df_place_TOS),dtype=bool)
-
-    ## make mask for type of spending interested in (TOS)
     if type(naics) == list:
         for i in naics:
             mask = [ str(ncode)[:3]==i for ncode in list(df_place_TOS['NAICS_CODE']) ]
@@ -423,79 +454,74 @@ def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, before_flood_star
     else:
         mask = [ str(ncode)[:3]==naics for ncode in list(df_place_TOS['NAICS_CODE']) ]
         df_TOS = df_place_TOS[mask]
-
     if 'PLACEKEY' in df_safegraph_spend.columns:
         df_place_TOS = df_safegraph_spend[df_safegraph_spend['PLACEKEY'].isin(df_TOS['PLACEKEY'])]
 
     df_TOS_before = time_filt(df_place_TOS, before_flood_start, before_flood_end)
-    #print(df_TOS_before.head(5), '\n')
-
     df_TOS_during = time_filt(df_place_TOS, during_flood_start, during_flood_end)
-    #print(df_TOS_during.head(5), '\n')
-
     df_TOS_after = time_filt(df_place_TOS, after_flood_start, after_flood_end)
-    #print(df_TOS_after.head(5), '\n')
-    
-    ## plot for total daily spending of TOS
+   
+    ## Graphs for Total Daily Spending of TOS. First is timeframe from week before flood-week after. Second is month before-month after
     df_thing_flood = time_filt(df_place_TOS, before_flood_start, after_flood_end)
     df_flood_spending_TOS = spend_by_day(df_thing_flood)
 
     before_flood_TOS = df_flood_spending_TOS[33:40]
     during_flood_TOS = df_flood_spending_TOS[40:47]
     after_flood_TOS = df_flood_spending_TOS[47:54]
-    #print(before_flood_TOS)
-    #print(during_flood_TOS)
-    #print(after_flood_TOS)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 12), sharey=True);
+    fig1, ax1 = plt.subplots(figsize=(15, 4), sharex = True);
     ax1.plot(before_flood_TOS)
-    ax1.set_title('Week before flood');
-    ax2.plot(during_flood_TOS)
-    ax2.set_title('Week of flood');
-    ax3.plot(after_flood_TOS)
-    ax3.set_title('Week after flood');
-    fig.suptitle('Daily Spending: ' + TOS + ', ' + place, fontsize='24');
-
+    ax1.plot(during_flood_TOS)
+    ax1.plot(after_flood_TOS)
+    ax1.legend(['Week Before Flood', 'Week During Flood', 'Week After Flood'])
+    fig1.suptitle('Daily Spending: ' + TOS + ', ' + place, fontsize='24');
 
     df_spend_before_TOS = spend_by_day(df_TOS_before)
     df_spend_during_TOS = spend_by_day(df_TOS_during)
     df_spend_after_TOS = spend_by_day(df_TOS_after)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 11), sharey=True);
-    ax1.plot(df_spend_before_TOS)
-    ax1.set_title('Before flood (May)');
+    fig2, ax2 = plt.subplots(figsize=(15, 4));
+    ax2.plot(df_spend_before_TOS)
     ax2.plot(df_spend_during_TOS)
-    ax2.set_title('During flood (June)');
-    ax3.plot(df_spend_after_TOS)
-    ax3.set_title('After flood (July)');
+    ax2.plot(df_spend_after_TOS)
+    ax2.legend(['Month Before (May)', 'Month During (June)', 'Month After (July)'])
+    fig2.suptitle('Daily Spending: ' + TOS, fontsize='24');
 
-    fig.suptitle('Daily Spending: ' + TOS, fontsize='24');
-
-
-    #print('Before Flooding: ')
+    ## Pie Charts for what transactions were instate vs out of state
     before = percent_instate(df_TOS_before)
-    #print('\n')
-
-    #print('During Flooding: ')
     during = percent_instate(df_TOS_during)
-    #print('\n')
-
-    #print('After Flooding: ')
     after = percent_instate(df_TOS_after)
-    #print('\n')
 
-    labels = 'In State','Out-of-State'
+    ## Pie Chart Color mapping
+    color_map = {
+        'WY' : 'Gold',
+        'CO' : 'Springgreen',
+        'MT' : 'Lightcoral',
+        'ID' : 'Purple',
+        'SD' : 'Aqua',
+        'Other' : 'RoyalBlue'
+    }
+
+    before_total = 0
+    during_total = 0
+    after_total = 0
+    for i in before[1]:
+        before_total += i[1]
+    for j in during[1]:
+        during_total += j[1]
+    for k in after[1]:
+        after_total += k[1]
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 6));
-
-    ax1.pie(before, labels=labels, autopct='%1.1f%%');
-    ax1.set_title('Before flood (May)');
-    ax2.pie(during, labels=labels, autopct='%1.1f%%');
-    ax2.set_title('During flood (June)');
-    ax3.pie(after, labels=labels, autopct='%1.1f%%');
-    ax3.set_title('After flood (July)');
+    ax1.pie([data[1] for data in before[1]], labels=[label[0] for label in before[1]], colors=[color_map[label[0]] for label in before[1]], autopct='%1.1f%%');
+    ax1.set_title('Before flood (May), Total Sales: ' + str(before_total));
+    ax2.pie([data[1] for data in during[1]], labels=[label[0] for label in during[1]], colors=[color_map[label[0]] for label in during[1]], autopct='%1.1f%%');
+    ax2.set_title('During flood (June), Total Sales: ' + str(during_total));
+    ax3.pie([data[1] for data in after[1]], labels=[label[0] for label in after[1]], colors=[color_map[label[0]] for label in after[1]], autopct='%1.1f%%');
+    ax3.set_title('After flood (July), Total Sales: ' + str(after_total));
     fig.suptitle('State of Origin: ' + TOS, fontsize='24');
 
-
+    ## Making map for monthly spending at place
     df_TOS_jan = time_filt(df_place_TOS, month[0], month[1])
     df_TOS_feb = time_filt(df_place_TOS, month[1], month[2])
     df_TOS_mar = time_filt(df_place_TOS, month[2], month[3])
@@ -508,29 +534,24 @@ def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, before_flood_star
     df_TOS_oct = time_filt(df_place_TOS, month[9], month[10])
     df_TOS_nov = time_filt(df_place_TOS, month[10], month[11])
     df_TOS_dec = time_filt(df_place_TOS, month[11], month[12])
-
     TOS_dfs = [df_TOS_jan, df_TOS_feb, df_TOS_mar, df_TOS_apr, df_TOS_may, df_TOS_jun, 
              df_TOS_jul, df_TOS_aug, df_TOS_sep, df_TOS_oct, df_TOS_nov, df_TOS_dec]
     
-
+    ## Graph for percent change of spending compared to year prior
     prev_year_pct=[]
-
     for i in range(0, len(TOS_dfs)):
         prev_year_pct.append(percent_change_year(TOS_dfs[i]))
-
-    fig, ax = plt.subplots(figsize=(16, 5))
+    fig, ax = plt.subplots(figsize=(15, 4))
     ax.plot(month[0:12], prev_year_pct);
     ax.set_title('Percent Change compared to 2021: ' + TOS);
     ax.set_xlabel('Date');
     ax.set_ylabel('Percent Change');
 
-
+    ## Graph for percent change of spending compared to month prior
     prev_month_pct=[]
-
     for i in range(0, len(TOS_dfs)):
         prev_month_pct.append(percent_change_month(TOS_dfs[i]))
-
-    fig, ax = plt.subplots(figsize=(16, 5))
+    fig, ax = plt.subplots(figsize=(15, 4))
     ax.plot(month[0:12], prev_month_pct);
     ax.set_title('Percent Change compared to prior month: ' + TOS);
     ax.set_xlabel('Date');
@@ -539,11 +560,7 @@ def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, before_flood_star
     return [before_flood_TOS, during_flood_TOS, after_flood_TOS]
 
 def aggregate(flood, flood_accom, flood_food, flood_retail, flood_transit, place):
-
-    print("===============================")
-    print("AGGREGATE")
-    print("===============================")
-
+    ## Making Aggregate for each type of spending interested in and total spending
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(15, 12), sharey=True);
     ax1.plot(flood[0], label='Total Daily Spending')
     ax1.plot(flood_accom[0], label='Accomodation Daily Spending');

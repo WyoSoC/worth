@@ -1,6 +1,7 @@
 import os
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+import matplotlib.cm as cm
 import pandas as pd
 import geopandas as gpd
 import plotly.express as px
@@ -132,8 +133,10 @@ def time_filt(df, start, end):
 def percent_instate(df):
     home_city = df['CUSTOMER_HOME_CITY']
     state_info = [['WY', 0]]
-    state_info_filtered = []
+    state_info_close = []
+    state_info_big = []
 
+    ## Taking spending data and appending to list for each purchase in POIs
     for val in home_city:
         cities = val.split(",")
         cities = cities[1::2]
@@ -151,16 +154,28 @@ def percent_instate(df):
             if found == False:
                 count = state[1].strip("{}")
                 state_info.append([state[0], int(count)])
-    
-    dump = ['Other', 0]
+    state_info = sorted(state_info, key = lambda state: state[0])
+
+    ## Sorting to 5 closest states
+    dump1 = ['Other', 0]
     for i in state_info:
         if (i[0] == 'WY' or i[0] == 'CO' or i[0] == 'MT' or i[0] == 'ID' or i[0] == 'SD'):
-            state_info_filtered.append(i)
+            state_info_close.append(i)
         else:
-            dump[1] += i[1]
-    state_info_filtered.append(dump)
+            dump1[1] += i[1]
+    state_info_close.append(dump1)
+
+    ## Sorting to 5 biggest states
+    dump2 = ['Other', 0]
+    state_info_big_temp = sorted(state_info, key = lambda state: state[1], reverse = True)
+    for i in state_info:
+        if (i[0] == state_info_big_temp[0][0] or i[0] == state_info_big_temp[1][0] or i[0] == state_info_big_temp[2][0] or i[0] == state_info_big_temp[3][0] or i[0] == state_info_big_temp[4][0]):
+            state_info_big.append(i)
+        else:
+            dump2[1] += i[1]
+    state_info_big.append(dump2)
     
-    return [state_info, state_info_filtered]
+    return [state_info_big, state_info_close, state_info]
 
 
 
@@ -212,7 +227,7 @@ def spend_by_day(df):
 
 
 
-def type_pie_town(df_safegraph_poi, df_safegraph_spend, place, months):
+def type_pie_town(df_safegraph_poi, df_safegraph_spend, place, months, prev_months):
     ## Make DataFrame for POIs in slected town/towns
     combined_mask = np.zeros(len(df_safegraph_poi), dtype = bool)
     if type(place) == list:
@@ -295,19 +310,26 @@ def type_pie_town(df_safegraph_poi, df_safegraph_spend, place, months):
     ## Setting up Stacked Bar chart things
     for i in range(len(months) - 1):
         df_total_filtered = time_filt(df_total, months[i], months[i+1])
-
         ## Getting total money value for each NAICS code over each month
         spend_total = df_total_filtered.groupby('NAICS_CODE_FINAL')['RAW_TOTAL_SPEND'].sum().astype(int)
         for group_name, group_data in groups.items():
-            money = spend_total.get(group_name, 0)
-            group_data[2].append(money)
+            flood_money = spend_total.get(group_name, 0)
+            group_data[2].append(flood_money)
+    
+    ## Setting up prev years totals
+    df_total_filtered_prev = time_filt(df_total, prev_months[0], prev_months[-1])
+    spend_total_prev = df_total_filtered_prev.groupby('SPEND_DATE_RANGE_START')['RAW_TOTAL_SPEND'].sum().astype(int)
 
     ## Making final graph
     bottom = np.zeros(len(months)-1)
     for naics, data in groups.items():
         values = np.array(data[2])
-        ax3.bar(months[:-1], values, bottom = bottom, color = data[1], label = naics)
+        ax3.bar(months[:-1], values, bottom = bottom, color = data[1])
         bottom += values
+    ax3.plot(months[:-1], spend_total_prev.values, color='black', marker='o', label='Previous Year Total')
+    ax3.tick_params(axis = 'x', labelrotation = 45)
+    ax3.set_xticklabels(['January', 'Feburary', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'])
+    ax3.legend()
     ax3.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, _: f'{x/1000:.0f}K'))
     ax3.set_ylabel('Dollars Spent in Thousands')
 
@@ -315,9 +337,9 @@ def type_pie_town(df_safegraph_poi, df_safegraph_spend, place, months):
         title = ''
         for i in place:
             title += i + ', '
-        #fig2.suptitle('Spending at POIs in ' + title[:-2], fontsize = '24')
+        fig2.suptitle('Spending at POIs in ' + title[:-2], fontsize = '24')
     else:
-        #fig2.suptitle('Spending at POIs in ' + place, fontsize = '24')
+        fig2.suptitle('Spending at POIs in ' + place, fontsize = '24')
         x=1
 
     return
@@ -370,15 +392,54 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
     during = percent_instate(df_place_during)
     after = percent_instate(df_place_after)
 
-    ## Pie Chart Color mapping
+    ## Making CSV for Spending Info
+    df_place_full = time_filt(df_place, before_flood_start, after_flood_end)
+    flood_df = {}
+    for i in before[2]:
+        state = i[0]
+        before_total = i[1]
+        flood_df[state] = [before_total, 0, 0]
+    for j in during[2]:
+        state = j[0]
+        during_total = j[1]
+        if state not in flood_df:
+            flood_df[state] = [0, during_total, 0]
+        else:
+            flood_df[state][1] = during_total
+    for k in after[2]:
+        state = k[0]
+        after_total = k[1]
+        if state not in flood_df:
+            flood_df[state] = [0, 0, after_total]
+        else:
+            flood_df[state][2] = after_total
+    flood_df = pd.DataFrame(flood_df, index = ['Before Flood State of Orign Totals', 'During Flood State of Orign Totals', 'After Flood State of Orign Totals']).transpose()
+    if type(place) == list:
+        name = "".join(place) + '_Spend.csv'
+    else:
+        name = place + '_Spend.csv'
+    #df_place_full.to_csv(name)
+
+    ## Setting up Color Map for Pie Charts
+    i = 0
+    states = [ 'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+                'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+                'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+                'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+                'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY']
+    custom_map = {
+        'WY' : 'Gold'
+    }
+    cmap = cm.get_cmap('Set3', len(states))
     color_map = {
-        'WY' : 'Gold',
-        'CO' : 'Springgreen',
-        'MT' : 'Lightcoral',
-        'ID' : 'Purple',
-        'SD' : 'Aqua',
         'Other' : 'RoyalBlue'
     }
+    for state in states:
+        if state in custom_map:
+            color_map[state] = custom_map[state]
+        else:
+            color_map[state] = cmap(i)
+            i += 1
 
     before_total = 0
     during_total = 0
@@ -390,13 +451,17 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
     for k in after[1]:
         after_total += k[1]
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 6));
+    fig, axs = plt.subplots(2, 3, figsize=(15, 6));
+    ax1, ax2, ax3, ax4, ax5, ax6 = axs.flatten()
     ax1.pie([data[1] for data in before[1]], labels=[label[0] for label in before[1]], colors=[color_map[label[0]] for label in before[1]], autopct='%1.1f%%');
     ax1.set_title('Before flood (May), Total Sales: ' + str(before_total));
     ax2.pie([data[1] for data in during[1]], labels=[label[0] for label in during[1]], colors=[color_map[label[0]] for label in during[1]], autopct='%1.1f%%');
     ax2.set_title('During flood (June), Total Sales: ' + str(during_total));
     ax3.pie([data[1] for data in after[1]], labels=[label[0] for label in after[1]], colors=[color_map[label[0]] for label in after[1]], autopct='%1.1f%%');
     ax3.set_title('After flood (July), Total Sales: ' + str(after_total));
+    ax4.pie([data[1] for data in before[0]], labels=[label[0]for label in before[0]], colors = [color_map[label[0]] for label in before[0]], autopct='%1.1f%%')
+    ax5.pie([data[1] for data in during[0]], labels=[label[0]for label in during[0]], colors = [color_map[label[0]] for label in during[0]], autopct='%1.1f%%')
+    ax6.pie([data[1] for data in after[0]], labels=[label[0]for label in after[0]], colors = [color_map[label[0]] for label in after[0]], autopct='%1.1f%%')
     fig.suptitle('State of Origin: All Transactions' , fontsize='24');
 
     ## Making map for monthly spending at place
@@ -439,7 +504,7 @@ def show_data_TOS_total(place, df_safegraph_poi, df_safegraph_spend, before_floo
 
 
 
-def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, before_flood_start, before_flood_end, 
+def show_data_TOS(place, df_safegraph_poi, df_safegraph_spend, df_movement, before_flood_start, before_flood_end, 
                 during_flood_start, during_flood_end, after_flood_start, after_flood_end, month, 
                 naics, TOS):
     ## Setting up dataframe for our graphs
